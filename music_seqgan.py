@@ -214,6 +214,8 @@ def main():
                     }
                     _ = sess.run(discriminator.train_op, feed)
                     D_loss += discriminator.loss.eval(feed, session=sess) ##这里 loss.eval到底指的是啥
+                    #你可以使用sess.run()在同一步获取多个tensor中的值，使用Tensor.eval()时只能在同一步当中获取一个tensor值，
+                    #并且每次使用 eval 和 run时，都会执行整个计算图
             buffer = 'epoch: ' + str(epochs+1) + '  D loss: ' + str(D_loss/dis_data_loader.num_batch/3)
             print(buffer)
             log.write(buffer)
