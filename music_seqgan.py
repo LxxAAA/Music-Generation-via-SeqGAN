@@ -61,11 +61,11 @@ epochs_discriminator = config['epochs_discriminator']
 
 path = config['datapath']
 
-
+#生成样本？
 def generate_samples(sess, trainable_model, batch_size, generated_num, output_file):
-    # unconditinally generate random samples
-    # it is used for test sample generation & negative data generation
-    # called per D learning phase
+    # unconditinally generate random samples 无条件生成随机样本
+    # it is used for test sample generation & negative data generation 这是被用于 测试样本生成&负例样本生成
+    # called per D learning phase 被调用在每一个D的学习周期
 
     # Generate Samples
     generated_samples = []
@@ -75,10 +75,10 @@ def generate_samples(sess, trainable_model, batch_size, generated_num, output_fi
     with open(output_file, 'wb') as fp:
         cPickle.dump(generated_samples, fp, protocol=2)
 
-
+#预训练 周期
 def pre_train_epoch(sess, trainable_model, data_loader):
-    # Pre-train the generator using MLE for one epoch
-    # independent of D, the standard RNN learning
+    # Pre-train the generator using MLE for one epoch 利用 MLE(?)进行生成器的预训练
+    # independent of D, the standard RNN learning 独立与D，是标准的RNN学习， 玛德和我想的一样！！！ 是不是和我的一样？
     supervised_g_losses = []
     data_loader.reset_pointer()
 
@@ -87,36 +87,36 @@ def pre_train_epoch(sess, trainable_model, data_loader):
         _, g_loss = trainable_model.pretrain_step(sess, batch)
         supervised_g_losses.append(g_loss)
 
-    return np.mean(supervised_g_losses)
+    return np.mean(supervised_g_losses)#返回LOSS
 
-# new implementations
-def calculate_train_loss_epoch(sess, trainableav_model, data_loader):
-    # calculate the train loss for the generator
-    # same for pre_train_epoch, but without the supervised grad update
-    # used for observing overfitting and stability of the generator
+# new implementations 新的实现
+def calculate_train_loss_epoch(sess, trainableav_model, data_loader): 
+    # calculate the train loss for the generator  计算 生成器的 训练的 损失
+    # same for pre_train_epoch, but without the supervised grad update 和 pre train epoch一样，只是没有了 监督的梯度更新（？）
+    # used for observing overfitting and stability of the generator 用于 观察 生成器的 过拟合以及稳定性的 情况
     supervised_g_losses = []
     data_loader.reset_pointer()
 
-    for it in xrange(data_loader.num_batch):
+    for it in xrange(data_loader.num_batch): 
         batch = data_loader.next_batch()
-        # note the newly implementated method call for the model
-        # calculate_nll_loss_step calculate the node up to g_loss, but does not calculate the update node
+        # note the newly implementated method call for the model 注意使用了新的 实现的 方法 去调用
+        # calculate_nll_loss_step calculate the node up to g_loss, but does not calculate the update node 那个函数计算了g_loss上的node，但是没有计算更新的node
         g_loss = trainable_model.calculate_nll_loss_step(sess, batch)
         supervised_g_losses.append(g_loss)
 
     return np.mean(supervised_g_losses)
 
-
+# 这个其实没怎么明白 BLEU实质是对两个句子的共现词频率计算 那应该就是判断两个相似的拉，，对是的！ 我要改的就是这里！！
 def calculate_bleu(sess, trainable_model, data_loader):
-    # bleu score implementationa
-    # used for performance evaluation for pre-training & adv. training
-    # separate true dataset to the valid set
-    # conditionally generate samples from the start token of the valid set
+    # bleu score implementationa BLEU实质是对两个句子的共现词频率计算 这里是他的实现
+    # used for performance evaluation for pre-training & adv. training 用于 评估 预训练和 对抗训练的 性能
+    # separate true dataset to the valid set 分割真的数据集到 验证集
+    # conditionally generate samples from the start token of the valid set 从valid集合的 开始token下 条件生成样本
     # measure similarity with nltk corpus BLEU
 
     data_loader.reset_pointer()
     bleu_avg = 0
-
+    #具体之后再看，这块是重点！ 重中之重，因为之后我切入点就是这块，我的切入点。
     for it in xrange(data_loader.num_batch):
         batch = data_loader.next_batch()
         # predict from the batch
@@ -270,6 +270,7 @@ def main():
                  ',  G_adv_loss: %.12f' % (G_loss/epochs_generator) + \
                  ',  D loss: %.12f' % (D_loss/epochs_discriminator/3) + \
                  ',  bleu score: %.12f' % calculate_bleu(sess, generator, eval_data_loader)
+        #在这里，bleu有没有用到呢，有没有作用在D的训练中
         print(buffer)
         log.write(buffer)
 
