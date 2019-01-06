@@ -60,12 +60,19 @@ class Generator(object):
         gen_x = tensor_array_ops.TensorArray(dtype=tf.int32, size=self.sequence_length,
                                              dynamic_size=False, infer_shape=True)
 
+        ##这是下面while函数的函数体
         def _g_recurrence(i, x_t, h_tm1, gen_o, gen_x): #是G的递归循环操作么
             h_t = self.g_recurrent_unit(x_t, h_tm1)  # hidden_memory_tuple
             o_t = self.g_output_unit(h_t)  # batch x vocab , logits not prob
             log_prob = tf.log(tf.nn.softmax(o_t))
+            #将x的数据格式转化成dtype
             next_token = tf.cast(tf.reshape(tf.multinomial(log_prob, 1), [self.batch_size]), tf.int32)
+            
+            #tf.nn.embedding_lookup()就是根据input_ids中的id，寻找embeddings中的第id行。
+            #比如input_ids=[1,3,5]，则找出embeddings中第1，3，5行，组成一个tensor返回。
             x_tp1 = tf.nn.embedding_lookup(self.g_embeddings, next_token)  # batch x emb_dim
+            
+            #写入到gen_o,gen-x，至于写进什么，还不知道
             gen_o = gen_o.write(i, tf.reduce_sum(tf.multiply(tf.one_hot(next_token, self.num_emb, 1.0, 0.0),
                                                              tf.nn.softmax(o_t)), 1))  # [batch_size] , prob
             gen_x = gen_x.write(i, next_token)  # indices, batch_size
@@ -73,25 +80,41 @@ class Generator(object):
 
         # this recurrence uses tf control ops while loop to the pre-defined sequence length
         # start from zero token with embedding and prime with start token
+        
+        
+        '''
+        cond是循环的条件，body是循环执行的主体，这两个都是函数。
+        loop_vars是要用到的变量，cond和body的参数相同且都是loop_vars。
+        但一般cond只用到个别参数用来判断循环是否结束，大部分参数都是body中用到。
+        parallel_iterations是并行执行循环的个数。
+        看下面cond函数其实就是看finished变量是否已经全部变为0，而body函数也就是执行了decoder.step(time, inputs, state)
+        这句代码之后一系列的赋值和判断
+        '''
+        #关键是这个是在干嘛呢
+        
         _, _, _, self.gen_o, self.gen_x = control_flow_ops.while_loop(
             cond=lambda i, _1, _2, _3, _4: i < self.sequence_length,
             body=_g_recurrence,
             loop_vars=(tf.constant(0, dtype=tf.int32),
                        tf.nn.embedding_lookup(self.g_embeddings, self.start_token), self.h0, gen_o, gen_x))
 
-        self.gen_x = self.gen_x.stack()  # seq_length x batch_size
+        #genx本来是数组，用了stack就变成了一个矩阵了，soga！
+        self.gen_x = self.gen_x.stack()  # seq_length x batch_size 
         self.gen_x = tf.transpose(self.gen_x, perm=[1, 0])  # batch_size x seq_length
-
+        
+        #有监督的预训练 发生器
         # supervised pretraining for generator
         g_predictions = tensor_array_ops.TensorArray(
             dtype=tf.float32, size=self.sequence_length,
             dynamic_size=False, infer_shape=True)
 
         # stacked tensor array for embedded input
+        #这块这么做是为了什么，FXXK！
         ta_emb_x = tensor_array_ops.TensorArray(
             dtype=tf.float32, size=self.sequence_length)
         ta_emb_x = ta_emb_x.unstack(self.processed_x)
-
+        
+        #这同样是下面while的函数体，具体在做什么我不是特别清楚。。。
         def _pretrain_recurrence(i, x_t, h_tm1, g_predictions):
             # recurrent method for pretraining
             h_t = self.g_recurrent_unit(x_t, h_tm1)
@@ -108,10 +131,13 @@ class Generator(object):
                        tf.nn.embedding_lookup(self.g_embeddings, self.start_token),
                        self.h0, g_predictions))
 
+        #同样把得到的矩阵stack，然后变方向，最后变成一个矩阵，为什么这么做，不知道。。。
         self.g_predictions = tf.transpose(self.g_predictions.stack(), perm=[1, 0, 2])  # batch_size x seq_length x vocab_size
 
         # pretraining loss
         # consists of supervised NLL only, without reward signal from D
+        
+        #计算loss，反向。
         self.pretrain_loss = -tf.reduce_sum(
             tf.one_hot(tf.to_int32(tf.reshape(self.x, [-1])), self.num_emb, 1.0, 0.0) * tf.log(
                 tf.clip_by_value(tf.reshape(self.g_predictions, [-1, self.num_emb]), 1e-20, 1.0)
@@ -122,9 +148,11 @@ class Generator(object):
         pretrain_opt = self.g_optimizer(self.learning_rate)
 
         # gradient clipping for stable learning of RNN
+        #学习率，学习更新以及等等
         self.pretrain_grad, _ = tf.clip_by_global_norm(tf.gradients(self.pretrain_loss, self.g_params), self.grad_clip)
         self.pretrain_updates = pretrain_opt.apply_gradients(zip(self.pretrain_grad, self.g_params))
-
+         
+        #非监督的学习， 是gan的正经步骤是么
         #######################################################################################################
         #  Unsupervised Training
         #######################################################################################################
@@ -139,6 +167,8 @@ class Generator(object):
 
         g_opt = self.g_optimizer(self.learning_rate)
 
+        #其作用在于将传入的梯度张量t的L2范数进行了上限约束，约束值即为clip_norm，如果t的L2范数超过了clip_norm，
+        #则变换为t * clip_norm / l2norm(t)，如此一来，变换后的t的L2范数便小于等于clip_norm了
         self.g_grad, _ = tf.clip_by_global_norm(tf.gradients(self.g_loss, self.g_params), self.grad_clip)
         self.g_updates = g_opt.apply_gradients(zip(self.g_grad, self.g_params))
 
