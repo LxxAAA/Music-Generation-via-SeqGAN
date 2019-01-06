@@ -154,3 +154,8 @@ class Discriminator(object):
         d_optimizer = tf.train.AdamOptimizer(self.learning_rate)
         grads_and_vars = d_optimizer.compute_gradients(self.loss, self.params, aggregation_method=2)
         self.train_op = d_optimizer.apply_gradients(grads_and_vars)
+        
+        '''
+        * name_scope: * 为了更好地管理变量的命名空间而提出的。比如在 tensorboard 中，因为引入了 name_scope， 我们的 Graph 看起来才井然有序。
+* variable_scope: * 大大大部分情况下，跟 tf.get_variable() 配合使用，实现变量共享的功能。
+        '''
