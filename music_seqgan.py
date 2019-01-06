@@ -213,7 +213,7 @@ def main():
                         discriminator.dropout_keep_prob: dis_dropout_keep_prob
                     }
                     _ = sess.run(discriminator.train_op, feed)
-                    D_loss += discriminator.loss.eval(feed, session=sess)
+                    D_loss += discriminator.loss.eval(feed, session=sess) ##这里 loss.eval到底指的是啥
             buffer = 'epoch: ' + str(epochs+1) + '  D loss: ' + str(D_loss/dis_data_loader.num_batch/3)
             print(buffer)
             log.write(buffer)
