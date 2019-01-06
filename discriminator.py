@@ -50,6 +50,7 @@ def highway(input_, size, num_layers=1, bias=-2.0, f=tf.nn.relu, scope='Highway'
 
     return output
 
+#我的重点是让计算机可以审美一首歌！
 class Discriminator(object):
     """
     A CNN for text classification.
@@ -62,6 +63,7 @@ class Discriminator(object):
         # Placeholders for input, output and dropout
         self.input_x = tf.placeholder(tf.int32, [None, sequence_length], name="input_x")
         self.input_y = tf.placeholder(tf.float32, [None, num_classes], name="input_y")
+        #dropout保留的多少比例
         self.dropout_keep_prob = tf.placeholder(tf.float32, name="dropout_keep_prob")
 
         # Keeping track of l2 regularization loss (optional)
@@ -125,20 +127,27 @@ class Discriminator(object):
                 self.h_drop = tf.nn.dropout(self.h_highway, self.dropout_keep_prob)
 
             # Final (unnormalized) scores and predictions
+            # 输出 是一个线性层
             with tf.name_scope("output"):
+                #这个是线性函数
                 W = tf.Variable(tf.truncated_normal([num_filters_total, num_classes], stddev=0.1), name="W")
                 b = tf.Variable(tf.constant(0.1, shape=[num_classes]), name="b")
+                #正则化
                 l2_loss += tf.nn.l2_loss(W)
                 l2_loss += tf.nn.l2_loss(b)
+                #计算分数
                 self.scores = tf.nn.xw_plus_b(self.h_drop, W, b, name="scores")
                 self.ypred_for_auc = tf.nn.softmax(self.scores)
+                #预测分数
                 self.predictions = tf.argmax(self.scores, 1, name="predictions")
 
             # CalculateMean cross-entropy loss
             with tf.name_scope("loss"):
+                #计算LOSS函数
                 losses = tf.nn.softmax_cross_entropy_with_logits(logits=self.scores, labels=self.input_y)
                 self.loss = tf.reduce_mean(losses) + l2_reg_lambda * l2_loss
-
+        
+        #下面这个操作没看懂。。。
         self.params = [param for param in tf.trainable_variables() if 'discriminator' in param.name]
         # adam optimzier for discriminator
         # may want to use SGD for stable learning of D
