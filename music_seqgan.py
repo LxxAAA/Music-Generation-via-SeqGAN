@@ -20,7 +20,7 @@ with open("SeqGAN.yaml") as stream:
     except yaml.YAMLError as exc:
         print(exc)
 
-os.environ['CUDA_VISIBLE_DEVICES'] = config['GPU']
+os.environ['CUDA_VISIBLE_DEVICES'] = config['GPU'] ##最大问题，感觉GPU没有用上
 #########################################################################################
 #  Generator  Hyper-parameters
 ######################################################################################
