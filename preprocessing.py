@@ -1,3 +1,5 @@
+#与make ref不是很相同
+#这个应该是make ref的增强版， 正式应该用的是这个
 from music21 import *
 import os
 from copy import copy
@@ -5,7 +7,7 @@ import pickle
 from six.moves import xrange
 
 def load_data(file_path):
-    ## load midi file using music21 library
+    ## load midi file using music21 library 利用music21读取midi文件
     piece = converter.parse(file_path)
     """
     # transpose all streams to C major. this process is to reduce the number of states
@@ -23,9 +25,10 @@ def load_data(file_path):
     return piece
 
 
-class preprocessing(object):
+class preprocessing(object): #预处理
     def __init__(self):
         # dictionaries of (notes and chords) and (octaves of notes and octaves of chords)
+        
         with open('./dataset/chords', 'rb') as fp:
             self.chord_ref = pickle.load(fp)
         with open('./dataset/octaves', 'rb') as fp:
@@ -33,7 +36,7 @@ class preprocessing(object):
         self.note_ref = ['Rest', 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]
         self.note_octave_ref = ['Rest', 2, 3, 4, 5, 6]
 
-    def parsing(self, data_path):
+    def parsing(self, data_path):#解析
         # load midi file
         piece = load_data(data_path)
         # all_parts is list of melody and chords, each is sequence of [start time, duration, octave, pitch, velocity]
@@ -63,8 +66,9 @@ class preprocessing(object):
                     part_tuples = self.streaming(part, event, part_tuples)
             if part_tuples != []:
                 all_parts.append(part_tuples)
-        parsed = self.compare_parts(all_parts)
-        sequence = self.sequentialize(parsed)
+        parsed = self.compare_parts(all_parts) #这段是ref 那个没有的
+        sequence = self.sequentialize(parsed)  #
+        #ref是直接返回了all part
         return sequence
 
     def streaming(self, part, event, part_tuples):
