@@ -1,9 +1,10 @@
+#后期处理
 from music21 import *
 import pickle
 from random import randint
 from six.moves import xrange
 
-path = '/home/zyx/seqGAN'
+path = '/music/seqGAN'
 
 with open( path+'/dataset/chords', 'rb') as fp:
     chords_ref = pickle.load(fp)
@@ -11,6 +12,7 @@ with open( path+'/dataset/octaves', 'rb') as fp:
     octaves_ref = pickle.load(fp)
 
 # map sequence of token (integer) to sequence of [melody duration, octave, key, velocity, chord duration, octave, key, velocity]
+# 映射 列表 ——记号的列表（旋律持续时间， 八度， key ，速率，， 和弦持续， 音调， key， 速率）
 def inverse_mapping(tokens):
     output = []
     # load reference list
@@ -28,18 +30,22 @@ def split(seq):
     chords = []
     for token in seq:
         # in every token, first four elements are melody and last four elements are chord
+        # 对于每一个符号，前四个都是旋律， 而后四个都是和弦， 不明白。。。
         melody.append(token[0:3])
         chords.append(token[3:])
     return melody, chords
 
 # make note from given token [duration, octave, key, velocity]
+#对于给定的 符号（持续时间， 八度， key， 速率）来制作 单音
 def make_event(token):
     # if token is rest
+    # 如果是 空
     if token[2]==0:
         r = note.Rest()
         r.duration.quarterLength = token[0]
         event = r# midi.translate.noteToMidiEvents(r)
     # if token is note
+    # 如果是 单音
     elif 0 < token[2] < 13:
         p = convert_pitch(token)
         n = note.Note(p[0])
@@ -47,6 +53,7 @@ def make_event(token):
         n.duration.quarterLength = token[0]
         event = n#midi.translate.noteToMidiEvents(n)
     # if token is chord
+    # 如果是 和弦
     else:
         p = convert_pitch(token)
         c = chord.Chord(p)
@@ -56,6 +63,7 @@ def make_event(token):
     return event
 
 # convert (octave and key) to pitch for midi file
+#转换为音高
 def convert_pitch(token):
     # change elements of list from float to integer
     octave_ind = int(token[1])
