@@ -85,7 +85,7 @@ def pre_train_epoch(sess, trainable_model, data_loader):
 
     for it in xrange(data_loader.num_batch):
         batch = data_loader.next_batch()
-        _, g_loss = trainable_model.pretrain_step(sess, batch)
+        _, g_loss = trainable_model.pretrain_step(sess, batch) #对G 预训练的关键步骤
         supervised_g_losses.append(g_loss)
 
     return np.mean(supervised_g_losses)#返回LOSS
@@ -157,63 +157,75 @@ def main():
     discriminator = Discriminator(sequence_length=SEQ_LENGTH, num_classes=2, vocab_size=vocab_size, embedding_size=dis_embedding_dim,
                                 filter_sizes=dis_filter_sizes, num_filters=dis_num_filters, l2_reg_lambda=dis_l2_reg_lambda)
 
-    # VRAM limitation for efficient deployment
+    # VRAM limitation for efficient deployment显存限制有效的部署
     tf_config = tf.ConfigProto()
-    tf_config.gpu_options.allow_growth = True
+    tf_config.gpu_options.allow_growth = True #动态分配GPU
     sess = tf.Session(config=tf_config)
-    sess.run(tf.global_variables_initializer())
+    #当我们训练自己的神经网络的时候，无一例外的就是都会加上一句 sess.run(tf.global_variables_initializer()) ，
+    #这行代码的官方解释是 初始化模型的参数
+    sess.run(tf.global_variables_initializer()) 
+    
     # define saver
-    saver = tf.train.Saver(tf.trainable_variables(), max_to_keep=1)
+    # #tf里面提供模型保存的是tf.train.Saver()模块
+    #在创建这个Saver对象的时候，有一个参数我们经常会用到，就是 max_to_keep 参数，
+    #这个是用来设置保存模型的个数，默认为5，即 max_to_keep=5，保存最近的5个模型。
+    #当然，如果你只想保存最后一代的模型，则只需要将max_to_keep设置为1即可
+    saver = tf.train.Saver(tf.trainable_variables(), max_to_keep=1) #这个用来存 预训练模型
+    
     # generate real data from the true dataset
     gen_data_loader.create_batches(positive_file)
     # generate real validation data from true validation dataset
     eval_data_loader.create_batches(valid_file)
 
-    log = open( path + '/save/experiment-log.txt', 'w')
+    log = open( path + '/save/experiment-log.txt', 'w') #log文本创建
     if config['pretrain'] == True:
         #  pre-train generator
-        print('Start pre-training...')
+        print('Start pre-training...') ############################################ 预训练开始了
         log.write('pre-training...\n')
-        for epoch in xrange(PRE_GEN_EPOCH):
+        for epoch in xrange(PRE_GEN_EPOCH): ######################################### 生成器的预训练
             # calculate the loss by running an epoch
-            loss = pre_train_epoch(sess, generator, gen_data_loader)
+            loss = pre_train_epoch(sess, generator, gen_data_loader) ##该函数了调用了generator的云训练方法，其实就是run了预训练的loss、grad张量
 
-            # measure bleu score with the validation set
-            bleu_score = calculate_bleu(sess, generator, eval_data_loader)
-            # since the real data is the true data distribution, only evaluate the pretraining loss
+            # measure bleu score with the validation set 测量 在验证机上的 bleu分， 为什么要这么做？
+            bleu_score = calculate_bleu(sess, generator, eval_data_loader) #是看预训练好的generator和eval做bleu是么，只是以bleu这个指标有些简单了。
+            
+            # since the real data is the true data distribution, only evaluate the pretraining loss 
+            # 因为真实的数据是 真实的数据分布， 所以只评估预训练的loss （？） 什么意思
             # note the absence of the oracle model which is meaningless for general use
             buffer = 'pre-train epoch: ' + str(epoch) + ' pretrain_loss: ' + str(loss) + ' bleu: ' + str(bleu_score)
             print(buffer)
             log.write(buffer)
 
-            # generate 5 test samples per epoch
-            # it automatically samples from the generator and postprocess to midi file
-            # midi files are saved to the pre-defined folder
-            if epoch == 0:
+            # generate 5 test samples per epoch 每个周期生成5个样本？？ 
+            # it automatically samples from the generator and postprocess to midi file 这个自动生成的样本是来自 生成器和后期处理
+            # midi files are saved to the pre-defined folder midi文件存在了预先定义的文件里
+            if epoch == 0: #第一个周期，则标号-1
                 generate_samples(sess, generator, BATCH_SIZE, generated_num, negative_file)
                 POST.main(negative_file, 5, -1)
             elif epoch == PRE_GEN_EPOCH - 1:
                 generate_samples(sess, generator, BATCH_SIZE, generated_num, negative_file)
-                POST.main(negative_file, 5, -PRE_GEN_EPOCH)
+                POST.main(negative_file, 5, -PRE_GEN_EPOCH) #否则，标号-周期，表示是预训练， 其实也就存了第一个和最后一个对吧
 
 
-        print('Start pre-training discriminator...')
-        # Train 3 epoch on the generated data and do this for 50 times
-        # this trick is also in spirit of the original work, but the epoch strategy needs tuning
-        for epochs in range(PRE_DIS_EPOCH):
-            generate_samples(sess, generator, BATCH_SIZE, generated_num, negative_file)
-            dis_data_loader.load_train_data(positive_file, negative_file)
-            D_loss = 0
-            for _ in range(3):
-                dis_data_loader.reset_pointer()
-                for it in xrange(dis_data_loader.num_batch):
-                    x_batch, y_batch = dis_data_loader.next_batch()
+        print('Start pre-training discriminator...')  ######################################################## 鉴别器的预训练
+        # Train 3 epoch on the generated data and do this for 50 times  执行50次， 每次三个epoch （实际上是40次）
+        # this trick is also in spirit of the original work, but the epoch strategy needs tuning 
+        for epochs in range(PRE_DIS_EPOCH):# for xxx times
+            
+            generate_samples(sess, generator, BATCH_SIZE, generated_num, negative_file) #生成样本？？和上面的用了一个函数 这个生成是干嘛的呢？？
+            #生成样本，用当前的generator生成一个样本，然后让鉴别器去评价，是这样么？？？ 对的，然后把生成的放在 negative_file文件夹下
+            dis_data_loader.load_train_data(positive_file, negative_file) #然后读取上面生成的负例 正例， 用作训练 D
+            D_loss = 0 # D的loss， 目标函数的标准
+            for _ in range(3): #epoch是3
+                dis_data_loader.reset_pointer() #指针重置
+                for it in xrange(dis_data_loader.num_batch): #for循环
+                    x_batch, y_batch = dis_data_loader.next_batch() #下一个batch, X和Y应该就是正和负吧
                     feed = {
-                        discriminator.input_x: x_batch,
-                        discriminator.input_y: y_batch,
-                        discriminator.dropout_keep_prob: dis_dropout_keep_prob
+                        discriminator.input_x: x_batch, #
+                        discriminator.input_y: y_batch, #
+                        discriminator.dropout_keep_prob: dis_dropout_keep_prob #dropout保留的数目 
                     }
-                    _ = sess.run(discriminator.train_op, feed)
+                    _ = sess.run(discriminator.train_op, feed) 
                     D_loss += discriminator.loss.eval(feed, session=sess) ##这里 loss.eval到底指的是啥
                     #你可以使用sess.run()在同一步获取多个tensor中的值，使用Tensor.eval()时只能在同一步当中获取一个tensor值，
                     #并且每次使用 eval 和 run时，都会执行整个计算图
