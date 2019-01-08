@@ -161,6 +161,7 @@ def main():
     tf_config = tf.ConfigProto()
     tf_config.gpu_options.allow_growth = True #动态分配GPU
     sess = tf.Session(config=tf_config)
+    
     #当我们训练自己的神经网络的时候，无一例外的就是都会加上一句 sess.run(tf.global_variables_initializer()) ，
     #这行代码的官方解释是 初始化模型的参数
     sess.run(tf.global_variables_initializer()) 
@@ -225,51 +226,73 @@ def main():
                         discriminator.input_y: y_batch, #
                         discriminator.dropout_keep_prob: dis_dropout_keep_prob #dropout保留的数目 
                     }
-                    _ = sess.run(discriminator.train_op, feed) 
-                    D_loss += discriminator.loss.eval(feed, session=sess) ##这里 loss.eval到底指的是啥
+                    _ = sess.run(discriminator.train_op, feed) #run（图， 形参），这个只是单纯的算一遍吧
+                    D_loss += discriminator.loss.eval(feed, session=sess) ## 在绘画中求loss的值 
+                    #上面这句 ， 这个loss是上一个loss，还是这次的又执行了一次？ 是执行了整个计算图，应该是算了第二遍了！
+                    
                     #你可以使用sess.run()在同一步获取多个tensor中的值，使用Tensor.eval()时只能在同一步当中获取一个tensor值，
                     #并且每次使用 eval 和 run时，都会执行整个计算图
             buffer = 'epoch: ' + str(epochs+1) + '  D loss: ' + str(D_loss/dis_data_loader.num_batch/3)
-            print(buffer)
-            log.write(buffer)
+            print(buffer) 
+            log.write(buffer) 
 
         # save the pre-trained checkpoint for future use
         # if one wants adv. training only, comment out the pre-training section after the save
-        save_checkpoint(sess, saver,PRE_GEN_EPOCH, PRE_DIS_EPOCH)
+        save_checkpoint(sess, saver,PRE_GEN_EPOCH, PRE_DIS_EPOCH) #用saver来保存当前的sess 的信息
 
-    # define rollout target object
-    # the second parameter specifies target update rate
+    ############################################################################################ G 和 D 的预训练结束了
+    
+    
+    ######################################################################## 下面这个rollout重要！！！！ 是强化学习里的操作，于G有关
+    
+    # define rollout target object 定义 rollout 目标 object， 简称了 TO
+    # the second parameter specifies target update rate 第二个参数指定了 TO的更新率
+    
     # the higher rate makes rollout "conservative", with less update from the learned generator
+    # 上面这句， 高的rate让 rollout 更加保守 ， 伴随 低的更新 来自已经学习了的生成器
+    
     # we found that higher update rate stabilized learning, constraining divergence of the generator
-    rollout = ROLLOUT(generator, 0.9)
-
+    #我们发现 高的 更新率 稳定了学习， 约束了 生成器的 分歧 ？？ 这句话不是太明白
+    rollout = ROLLOUT(generator, 0.9) #两个参数，一个是生成器， 说明rollout是来自于generator的，于G有明显关系，第二个参数 是 TO的更新率，效果在上面
+ 
     print('#########################################################################')
     print('Start Adversarial Training...')
     log.write('adversarial training...\n')
+    
+    ########################################################################################################开始正经的 对抗训练！！！
     if config['pretrain'] == False:
         # load checkpoint of pre-trained model
         load_checkpoint(sess, saver)
-    for total_batch in range(TOTAL_BATCH):
-        G_loss = 0
-        # Train the generator for one step
-        for it in range(epochs_generator):
-            samples = generator.generate(sess)
+    for total_batch in range(TOTAL_BATCH): #TOTAL_BATCH， epoch总数， 原本的是2000？
+        G_loss = 0 
+        # Train the generator for one step  训练G 的 one step
+        for it in range(epochs_generator): # 一次 one step 的 epoch
+            samples = generator.generate(sess) #得到样本
+             
+            #通过强化学习，得到reward，这个reward是seqGAN的特点，用来消除离散不能在gan当中的负面影响，但是具体怎么做的呢?
+            #sample是通过当前的G得到的样本， 给rollout，计算除了rewards
             rewards = rollout.get_reward(sess, samples, config['rollout_num'], discriminator)
+            
+            #参数是，当前的X，样本，以及rollout的reward，奖励？？
             feed = {generator.x: samples, generator.rewards: rewards}
+            
+            #开始正式的run，计算loss吧，这里又是先run了一次
             _ = sess.run(generator.g_updates, feed_dict=feed)
+            # 这个loss是后算的，给G_loss叠加的
             G_loss += generator.g_loss.eval(feed, session=sess)
 
-        # Update roll-out parameters
+        # Update roll-out parameters 更新rollout的参数
         rollout.update_params()
 
         # Train the discriminator
+        # 训练 D ############################################################################## 其实这里就和pre训练的时候一样
         D_loss = 0
-        for _ in range(epochs_discriminator):
-            generate_samples(sess, generator, BATCH_SIZE, generated_num, negative_file)
-            dis_data_loader.load_train_data(positive_file, negative_file)
-            for _ in range(3):
-                dis_data_loader.reset_pointer()
-
+        for _ in range(epochs_discriminator): # D的 epoch， 默认是5
+            generate_samples(sess, generator, BATCH_SIZE, generated_num, negative_file) # 用当前的G 生成负样本
+            dis_data_loader.load_train_data(positive_file, negative_file) #把负样本，正样本都提取出来，当作 D 的feed
+            for _ in range(3): # 每次都做三遍
+                dis_data_loader.reset_pointer() #指针重置
+      
                 for it in xrange(dis_data_loader.num_batch):
                     x_batch, y_batch = dis_data_loader.next_batch()
                     feed = {
@@ -286,12 +309,14 @@ def main():
                  ',  D loss: %.12f' % (D_loss/epochs_discriminator/3) + \
                  ',  bleu score: %.12f' % calculate_bleu(sess, generator, eval_data_loader)
         #在这里，bleu有没有用到呢，有没有作用在D的训练中
+        #貌似没有，只是一个标准，而且没有用在训练当中
         print(buffer)
         log.write(buffer)
 
         # generate random test samples and postprocess the sequence to midi file
-        generate_samples(sess, generator, BATCH_SIZE, generated_num, negative_file + "_EP_" + str(total_batch))
-        POST.main(negative_file + "_EP_" + str(total_batch), 5, total_batch)
+        #生成一个负例，和一个音乐吧
+        generate_samples(sess, generator, BATCH_SIZE, generated_num, negative_file + "_EP_" + str(total_batch)) #生成负样本，有什么用，不知道。。。
+        POST.main(negative_file + "_EP_" + str(total_batch), 5, total_batch) #生成音乐
     log.close()
 
 
