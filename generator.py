@@ -1,4 +1,5 @@
 #生成器
+#生成器加入的reward，只是放在了loss上，只是loss的一个正则项
 import tensorflow as tf
 from tensorflow.python.ops import tensor_array_ops, control_flow_ops
 import yaml
@@ -153,12 +154,13 @@ class Generator(object):
         self.pretrain_grad, _ = tf.clip_by_global_norm(tf.gradients(self.pretrain_loss, self.g_params), self.grad_clip)
         self.pretrain_updates = pretrain_opt.apply_gradients(zip(self.pretrain_grad, self.g_params))
          
-        #非监督的学习， 是gan的正经步骤是么
+        #非监督的学习， 是gan的正经步骤是么 是的
         #######################################################################################################
         #  Unsupervised Training
         #######################################################################################################
         # unsupervised loss is the adversarial loss, with reward signal from D
         # note the element-wise reward signal from the policy rollout
+        ######################################### 这里的reward只是loss的一个正则项而已。
         self.g_loss = -tf.reduce_sum(
             tf.reduce_sum(
                 tf.one_hot(tf.to_int32(tf.reshape(self.x, [-1])), self.num_emb, 1.0, 0.0) * tf.log(
