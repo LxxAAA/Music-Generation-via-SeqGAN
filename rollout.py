@@ -1,4 +1,5 @@
 #这个是强化学习，得到奖励有关的代码，我觉得这里也是我的重点关注对象！
+# rollout 是 G的类似版本，然后在得到 reward时，用到了D ，目前知道的就是这些。
 import tensorflow as tf
 from tensorflow.python.ops import tensor_array_ops, control_flow_ops
 import numpy as np
@@ -12,15 +13,18 @@ with open("SeqGAN.yaml") as stream:
 
 
 class ROLLOUT(object):
-    # policy rollout object for policy gradient update
-    # it takes the generator network as object, having the same structure as the generator
-    # during adversarial training, it produces rewards by get_reward()
-    # it updates its parameters by update_params()
-    def __init__(self, lstm, update_rate):
-        # define the network & update rate
-        self.lstm = lstm
+    # policy rollout object for policy gradient update 
+    # it takes the generator network as object, having the same structure as the generator 与G又相同的架构
+    # during adversarial training, it produces rewards by get_reward() 通过 get_reward 来获取reward，给 G
+    # it updates its parameters by update_params() 通过update_params来更新参数
+    def __init__(self, lstm, update_rate): ###################################### 传进来的是G， 难道G就是LSTM？？ 应该是，我看了G半天还没看懂，玛德
+        
+        # define the network & update rate 定义网络和学习率
+        self.lstm = lstm 
         self.update_rate = update_rate
-        # define hyperparams of the lstm network
+        ####################################################################################################
+        ###############################################             定义 lstm网络的超参数和一些元素
+        # define hyperparams of the lstm network 
         self.num_emb = self.lstm.num_emb
         self.batch_size = self.lstm.batch_size
         self.emb_dim = self.lstm.emb_dim
@@ -31,8 +35,8 @@ class ROLLOUT(object):
         self.learning_rate = self.lstm.learning_rate
         # define the generator embeddings & units
         self.g_embeddings = tf.identity(self.lstm.g_embeddings)
-        self.g_recurrent_unit = self.create_recurrent_unit()  # maps h_tm1 to h_t for generator
-        self.g_output_unit = self.create_output_unit()  # maps h_t to o_t (output token logits)
+        self.g_recurrent_unit = self.create_recurrent_unit()  # maps h_tm1 to h_t for generator ？这个，不懂
+        self.g_output_unit = self.create_output_unit()  # maps h_t to o_t (output token logits) ？ 这个，不懂
 
         #####################################################################################################
         # placeholder definition for input sequence of tokens
@@ -108,20 +112,20 @@ class ROLLOUT(object):
         # unstack the gen_x, with shape [seq_length, batch_size]
         self.gen_x = tf.transpose(self.gen_x.stack(), perm=[1, 0])
 
-
+    
     def get_reward(self, sess, input_x, rollout_num, discriminator):
         """
         calculate rewards from policy rollout
         :param sess: TF session
         :param input_x: input data
-        :param rollout_num: the number rollout for Monte Carlo search
+        :param rollout_num: the number rollout for Monte Carlo search #用到了MC搜索 rollout_num是MC的搜索次数
         :param discriminator: discriminator object
-        :return: rewards; list of reward at each step
+        :return: rewards; list of reward at each step #是每一步的reward
         """
         # define empty rewards list, append for each time step
         rewards = []
         # iterate over the defined rollout_num
-        for i in range(rollout_num):
+        for i in range(rollout_num):   ############################################## 这应该是利用自身（G的阉割），以及D的一个MC树，具体不看了。
             # given_num for time step is explicitly from 1 to SEQ_LENGTH
             for given_num in range(1, config['SEQ_LENGTH']):
                 # define feed for generation
