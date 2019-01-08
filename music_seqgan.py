@@ -300,7 +300,7 @@ def main():
                         discriminator.input_y: y_batch,
                         discriminator.dropout_keep_prob: dis_dropout_keep_prob
                     }
-                    _ = sess.run(discriminator.train_op, feed)
+                    _ = sess.run(discriminator.train_op, feed) #一般的LOSS是在run后面就返回的，我也不知道为毛这块是分开，并且分两次求loss，计算两次
                     D_loss += discriminator.loss.eval(feed, session=sess)
 
         # measure stability and performance evaluation with bleu score
