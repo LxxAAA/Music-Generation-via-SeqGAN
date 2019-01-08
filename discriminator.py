@@ -149,12 +149,15 @@ class Discriminator(object):
                 self.loss = tf.reduce_mean(losses) + l2_reg_lambda * l2_loss
         
         #下面这个操作没看懂。。。
-        self.params = [param for param in tf.trainable_variables() if 'discriminator' in param.name]
+        # tf.trainable_variables() 是当前图中所有可以训练的变量，比如权重，bias什么的
+        # param是迭代器，迭代所有的 上面的 可训练的权重（一个列表）
+        # 当 discrimintor in param.name的时候 就给params， 是不是代表把discrimintor下面所有可训练的权重给params
+        self.params = [param for param in tf.trainable_variables() if 'discriminator' in param.name] 
         # adam optimzier for discriminator
         # may want to use SGD for stable learning of D
-        d_optimizer = tf.train.AdamOptimizer(self.learning_rate)
-        grads_and_vars = d_optimizer.compute_gradients(self.loss, self.params, aggregation_method=2)
-        self.train_op = d_optimizer.apply_gradients(grads_and_vars)
+        d_optimizer = tf.train.AdamOptimizer(self.learning_rate) #优化器
+        grads_and_vars = d_optimizer.compute_gradients(self.loss, self.params, aggregation_method=2) #？ 是不是计算梯度
+        self.train_op = d_optimizer.apply_gradients(grads_and_vars) #？ 执行梯度下降
         
         '''
         * name_scope: * 为了更好地管理变量的命名空间而提出的。比如在 tensorboard 中，因为引入了 name_scope， 我们的 Graph 看起来才井然有序。
