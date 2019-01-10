@@ -31,25 +31,27 @@ class ROLLOUT(object):
         self.hidden_dim = self.lstm.hidden_dim
         self.sequence_length = self.lstm.sequence_length
         # copy the start token and learning rate of the generator
-        self.start_token = tf.identity(self.lstm.start_token)
-        self.learning_rate = self.lstm.learning_rate
+        self.start_token = tf.identity(self.lstm.start_token) ##2 y=x仅仅是tensor的一个简单赋值，不是定义的op，所以在图中不会形成一个节点，这样该管理器就失效了。tf.identity是返回一个一模一样新的tensor的op，这会增加一个新节点到gragh中
+        self.learning_rate = self.lstm.learning_rate ##2为什么上面这个要用identity， 但是下面这个就直接赋值了?
         # define the generator embeddings & units
-        self.g_embeddings = tf.identity(self.lstm.g_embeddings)
-        self.g_recurrent_unit = self.create_recurrent_unit()  # maps h_tm1 to h_t for generator ？这个，不懂
-        self.g_output_unit = self.create_output_unit()  # maps h_t to o_t (output token logits) ？ 这个，不懂
+        self.g_embeddings = tf.identity(self.lstm.g_embeddings) ##2 给一个op，做了一个相同的节点
+        self.g_recurrent_unit = self.create_recurrent_unit()  ##2 maps h_tm1 to h_t for generator ##2 映射 当前t-1的h 到当前t的h
+        self.g_output_unit = self.create_output_unit()  # maps h_t to o_t (output token logits) ##2 映射 当前t的h 到当前t的输出output
 
         #####################################################################################################
-        # placeholder definition for input sequence of tokens
+        # placeholder definition for input sequence of tokens ##2 对于输入做了一个占位符
         self.x = tf.placeholder(tf.int32, shape=[self.batch_size, self.sequence_length])
         self.given_num = tf.placeholder(tf.int32)
 
         # process the input x with embeddings
-        # permutation is for [seq_length, batch_size, emb_dim]
+        # permutation is for [seq_length, batch_size, emb_dim] 交换次序，改变通道位置
         # the reference code does this within cpu (for memory efficiency?)
+        # 用全心去感受，曼陀罗。
+        # 执行x，把通道对调。利用CPU去进行
         with tf.device('/cpu:0'):
             self.processed_x = tf.transpose(tf.nn.embedding_lookup(self.g_embeddings, self.x), perm=[1, 0, 2])
 
-        # unstack the processed_x to tensor array
+        # unstack the processed_x to tensor array                                     unstack拆散的意思
         ta_emb_x = tensor_array_ops.TensorArray(dtype=tf.float32, size=self.sequence_length)
         ta_emb_x = ta_emb_x.unstack(self.processed_x)
         # same goes for the x without embedding, note the int32 instead of float32
@@ -57,7 +59,7 @@ class ROLLOUT(object):
         ta_x = ta_x.unstack(tf.transpose(self.x, perm=[1, 0]))
         #####################################################################################################
 
-        # define zero initial state
+        # define zero initial state 起始状态
         self.h0 = tf.zeros([self.batch_size, self.hidden_dim])
         # stack two of it?
         self.h0 = tf.stack([self.h0, self.h0])
@@ -122,37 +124,39 @@ class ROLLOUT(object):
         :param discriminator: discriminator object
         :return: rewards; list of reward at each step #是每一步的reward
         """
-        # define empty rewards list, append for each time step
-        rewards = []
+        # define empty rewards list, append for each time step 对每一步有一个连续的值是么，但是其实只需要一段时间，
+        # 因为音乐这东西，不需要太远的间隔， 但是如何评价，如何给反馈？？？
+        rewards = [] 
         # iterate over the defined rollout_num
-        for i in range(rollout_num):   ############################################## 这应该是利用自身（G的阉割），以及D的一个MC树，具体不看了。
+        for i in range(rollout_num):   ##2 这个循环变量有什么用呢， 和 MC search有什么关系, 做很多遍，然后取一个平均吧
             # given_num for time step is explicitly from 1 to SEQ_LENGTH
-            for given_num in range(1, config['SEQ_LENGTH']):
+            for given_num in range(1, config['SEQ_LENGTH']): #这个是一次把每个位置的reward都算出来是吗？ 应该是这个意思
                 # define feed for generation
                 feed = {self.x: input_x, self.given_num: given_num}
                 # run the gen_x op defined from __init__ with feed
-                samples = sess.run(self.gen_x, feed)
-                # define new feed for discrimination
+                samples = sess.run(self.gen_x, feed) ##2 上面这个是生成sample，生成样本集合 ，只算到gen——x，就是得到所有的完整样本，然后给D去评价
+                # define new feed for discrimination   
                 feed = {discriminator.input_x: samples, discriminator.dropout_keep_prob: 1.0}
                 # run prediction by discriminator with feed
+                ##2 下面这个是用生成的正负样本，去求得ypred for auc， 来得到reward信息。 这里是得到这个点，所有的后续样本。 
                 ypred_for_auc = sess.run(discriminator.ypred_for_auc, feed)
                 ypred = np.array([item[1] for item in ypred_for_auc])
                 # add rewards for each given_num
-                if i == 0:  # initial rollout
+                if i == 0:  # initial rollout ##2 加入一个新的下标
                     rewards.append(ypred)
-                else:  # from 2nd rollout, add to the existing value
+                else:  # from 2nd rollout, add to the existing value 给之前加入的下表，增加值。。。因为三次取平均嘛
                     rewards[given_num-1] += ypred
 
-            # the last token reward
+            # the last token reward 最后的token的reward，不用再生成了是吧。就是倒数第二轮剩的？
             feed = {discriminator.input_x: input_x, discriminator.dropout_keep_prob: 1.0}
             ypred_for_auc = sess.run(discriminator.ypred_for_auc, feed)
             ypred = np.array([item[1] for item in ypred_for_auc])
             if i == 0:
                 rewards.append(ypred)
             else:
-                rewards[19] += ypred
+                rewards[19] += ypred #你这里的19让人很不爽呀亲！！！
         # average out the rewards, with shape [batch_size, seq_length]
-        rewards = np.transpose(np.array(rewards)) / (1.0 * rollout_num)
+        rewards = np.transpose(np.array(rewards)) / (1.0 * rollout_num) #默认就是反转图像的维度
         return rewards
 
     def create_recurrent_unit(self):
